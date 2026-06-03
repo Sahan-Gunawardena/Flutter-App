@@ -5,87 +5,176 @@ import '../models/transaction.dart';
 import '../services/sms_parser.dart';
 import '../services/sample_sms_data.dart';
 
-// ─── State Notifier ──────────────────────────────────────────────────────────
-
+/// Manages the application's transaction state.
+///
+/// This notifier is responsible for:
+/// - Loading initial SMS data
+/// - Parsing new SMS messages
+/// - Updating transaction categories
+/// - Removing transactions
+///
+/// Business logic is kept here instead of UI widgets
+/// to maintain a clean architecture.
 class TransactionsNotifier extends StateNotifier<List<Transaction>> {
+
   TransactionsNotifier() : super([]) {
     _loadSampleData();
   }
 
-  /// Parse all sample messages on startup.
+  /// Loads sample SMS messages when the app starts.
+  ///
+  /// Each SMS is parsed into a Transaction object,
+  /// then sorted so the newest transactions appear first.
   void _loadSampleData() {
     final parsed = SampleSmsData.messages
         .map(SmsParser.parse)
         .whereType<Transaction>()
         .toList();
 
-    // Sort newest first
+    // Display latest transactions first.
     parsed.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
     state = parsed;
   }
 
-  /// Parse and add a new SMS message to the list.
+  /// Parses a newly received SMS and adds it
+  /// to the transaction list.
+  ///
+  /// Invalid messages are ignored.
   void addFromSms(String rawMessage) {
     final transaction = SmsParser.parse(rawMessage);
+
     if (transaction == null) return;
 
     final updated = [transaction, ...state];
+
+    // Keep list ordered by newest transaction.
     updated.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
     state = updated;
   }
 
-  /// Update the category of a transaction identified by [id].
-  void updateCategory(String id, TransactionCategory newCategory) {
+  /// Updates the category of a specific transaction.
+  ///
+  /// Uses copyWith() to preserve immutability,
+  /// which works well with Riverpod state updates.
+  void updateCategory(
+    String id,
+    TransactionCategory newCategory,
+  ) {
     state = [
       for (final t in state)
-        if (t.id == id) t.copyWith(category: newCategory) else t,
+        if (t.id == id)
+          t.copyWith(category: newCategory)
+        else
+          t,
     ];
   }
 
-  /// Remove a transaction by [id].
+  /// Removes a transaction from the state.
   void remove(String id) {
-    state = state.where((t) => t.id != id).toList();
+    state = state
+        .where((t) => t.id != id)
+        .toList();
   }
 }
 
-// ─── Providers ───────────────────────────────────────────────────────────────
-
-/// The primary transactions list provider.
+/// Primary Riverpod provider that exposes
+/// the transaction list throughout the app.
+///
+/// UI screens subscribe to this provider
+/// and automatically rebuild when state changes.
 final transactionsProvider =
-    StateNotifierProvider<TransactionsNotifier, List<Transaction>>(
+    StateNotifierProvider<
+        TransactionsNotifier,
+        List<Transaction>>(
   (ref) => TransactionsNotifier(),
 );
 
-/// Derived: total expense amount across all transactions.
-final totalExpenseProvider = Provider<double>((ref) {
+/// Calculates total expenses dynamically.
+///
+/// This is a derived provider, meaning
+/// the value is automatically recalculated
+/// whenever the transaction list changes.
+final totalExpenseProvider =
+    Provider<double>((ref) {
   return ref
       .watch(transactionsProvider)
-      .where((t) => t.type == TransactionType.expense)
-      .fold(0.0, (sum, t) => sum + t.amount);
+      .where(
+        (t) => t.type ==
+            TransactionType.expense,
+      )
+      .fold(
+        0.0,
+        (sum, t) => sum + t.amount,
+      );
 });
 
-/// Derived: total income amount across all transactions.
-final totalIncomeProvider = Provider<double>((ref) {
+/// Calculates total income dynamically.
+final totalIncomeProvider =
+    Provider<double>((ref) {
   return ref
       .watch(transactionsProvider)
-      .where((t) => t.type == TransactionType.income)
-      .fold(0.0, (sum, t) => sum + t.amount);
+      .where(
+        (t) => t.type ==
+            TransactionType.income,
+      )
+      .fold(
+        0.0,
+        (sum, t) => sum + t.amount,
+      );
 });
 
-/// Derived: transactions filtered by category (null = all).
+/// Returns transactions filtered by category.
+///
+/// If category is null, all transactions
+/// are returned.
 final filteredTransactionsProvider =
-    Provider.family<List<Transaction>, TransactionCategory?>((ref, category) {
-  final all = ref.watch(transactionsProvider);
-  if (category == null) return all;
-  return all.where((t) => t.category == category).toList();
-});
+    Provider.family<
+        List<Transaction>,
+        TransactionCategory?>(
+  (ref, category) {
+    final all =
+        ref.watch(transactionsProvider);
 
-/// Selected category filter (null = show all).
+    if (category == null) {
+      return all;
+    }
+
+    return all
+        .where(
+          (t) =>
+              t.category == category,
+        )
+        .toList();
+  },
+);
+
+/// Stores the currently selected filter
+/// from the UI.
+///
+/// Null means "show all categories".
 final selectedCategoryFilterProvider =
-    StateProvider<TransactionCategory?>((ref) => null);
+    StateProvider<TransactionCategory?>(
+  (ref) => null,
+);
 
-/// Transactions after applying the selected filter.
-final visibleTransactionsProvider = Provider<List<Transaction>>((ref) {
-  final filter = ref.watch(selectedCategoryFilterProvider);
-  return ref.watch(filteredTransactionsProvider(filter));
+/// Final list displayed on screen.
+///
+/// Combines:
+/// - Current transactions
+/// - Selected category filter
+///
+/// This keeps filtering logic out of UI widgets.
+final visibleTransactionsProvider =
+    Provider<List<Transaction>>((ref) {
+  final filter = ref.watch(
+    selectedCategoryFilterProvider,
+  );
+
+  return ref.watch(
+    filteredTransactionsProvider(
+      filter,
+    ),
+  );
 });

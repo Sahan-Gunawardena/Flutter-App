@@ -1,7 +1,16 @@
 // lib/models/transaction.dart
 
-enum TransactionType { expense, income }
+/// Represents whether a transaction is money going out
+/// (expense) or money coming in (income).
+enum TransactionType {
+  expense,
+  income,
+}
 
+/// Categories used for automatic and manual transaction classification.
+///
+/// Auto-categorization is performed during SMS parsing,
+/// but users can update the category later from the details screen.
 enum TransactionCategory {
   transport,
   groceries,
@@ -15,7 +24,13 @@ enum TransactionCategory {
   income,
 }
 
+/// Extension that provides UI-friendly values for each category.
+///
+/// Keeping display labels and icons here prevents business logic
+/// from being mixed into UI widgets.
 extension TransactionCategoryLabel on TransactionCategory {
+
+  /// Human-readable category name displayed in the UI.
   String get label {
     switch (this) {
       case TransactionCategory.transport:
@@ -41,6 +56,8 @@ extension TransactionCategoryLabel on TransactionCategory {
     }
   }
 
+  /// Emoji used as a lightweight visual indicator
+  /// for transaction categories.
   String get emoji {
     switch (this) {
       case TransactionCategory.transport:
@@ -67,14 +84,39 @@ extension TransactionCategoryLabel on TransactionCategory {
   }
 }
 
+/// Core domain model representing a parsed financial transaction.
+///
+/// Instances of this model are created by the SMS parser after
+/// extracting information from bank SMS messages.
+///
+/// This model remains immutable to make state management with
+/// Riverpod predictable and easier to maintain.
 class Transaction {
+  /// Unique identifier for the transaction.
   final String id;
+
+  /// Transaction amount extracted from the SMS.
   final double amount;
+
+  /// Expense or Income.
   final TransactionType type;
+
+  /// Merchant or transaction description.
   final String merchant;
+
+  /// Date and time parsed from the SMS message.
   final DateTime dateTime;
+
+  /// Current category assigned to the transaction.
+  ///
+  /// Can be auto-generated or manually updated by the user.
   final TransactionCategory category;
+
+  /// Masked account reference (e.g. **1114).
   final String accountRef;
+
+  /// Original SMS message retained for debugging
+  /// and displaying raw transaction information.
   final String rawMessage;
 
   const Transaction({
@@ -88,6 +130,10 @@ class Transaction {
     required this.rawMessage,
   });
 
+  /// Creates a modified copy of the transaction while
+  /// preserving immutability.
+  ///
+  /// This is mainly used when updating categories through Riverpod.
   Transaction copyWith({
     String? id,
     double? amount,
